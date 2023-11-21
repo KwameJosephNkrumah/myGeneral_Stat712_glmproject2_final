@@ -1,0 +1,201 @@
+
+```{r}
+library(gtsummary)
+library(labelled)
+
+library(readr)
+
+library(tidyverse)
+library(dplyr)
+suppressMessages(library(stats))
+suppressMessages(library(car))
+suppressMessages(library(statmod))
+suppressMessages(library(ggplot2))
+suppressMessages(library(gridExtra))
+suppressMessages(library(MASS))
+```
+```{r}
+
+spotify_2023 <- read_csv("C:\\Users\\nkwam\\Documents\\WFU Fall 2023\\GLM\\spotify-2023.csv")
+
+
+head(spotify_2023)
+spotify<-spotify_2023[,c(4,7,9,10,17,20,23,24)]
+head(spotify)
+sum(is.na(spotify))
+spotify$`liveness_%`<-spotify$`liveness_%`/100
+spotify$`speechiness_%`<-spotify$`speechiness_%`/100
+spotify$`energy_%`<-spotify$`energy_%`/100
+colnames(spotify)[colnames(spotify) %in% c("liveness_%", "speechiness_%", "energy_%")] <- c("liveness", "speechiness", "energy")
+head(spotify)
+unique(spotify$mode)
+```
+
+
+
+
+```{r}
+spotify$streams <- as.numeric(spotify$streams)
+#unique(spotify$streams)
+spotify$mode<-factor(spotify$mode)
+str(spotify)
+length(spotify$streams)
+spotify<-na.omit(spotify)
+dim(spotify)
+mean(spotify$in_apple_playlists)
+```
+
+```{r,fig.asp=1}
+par(mfrow = c(2, 4))
+#EDA
+# Boxplot of streams
+S1<-ggplot(spotify, aes(x = streams)) +
+  geom_boxplot( fill = "blue", color = "black") +
+  labs(title = "Figure 1.1:Boxplot of total number \n of streams on Spotify",
+  x = "total number of streams \n on Spotify")
+
+# Remove outliers from streamns
+spotify<- subset( spotify,streams < 3000000000)
+
+S2<-ggplot(spotify, aes(x = streams)) +
+  geom_boxplot( fill = "blue", color = "black") +
+  labs(title = "Figure 1.2:Boxplot of total number \n of streams on Spotify",
+  x = "Transformed total number of streams \n on Spotify")
+
+# Boxplot of released_year
+S3<-ggplot(spotify, aes(x = released_year)) +
+  geom_boxplot( fill = "red", color = "black") +
+  labs(title = "Figure 1.3: Boxplot \n of released year", x = "released year")
+# Boxplot of in_spotify_playlists
+S4<-ggplot(spotify, aes(x = in_spotify_playlists)) +
+  geom_boxplot( fill = "tomato", color = "black") +
+  labs(title = "Figure 1.4: Boxplot of Number of \n  Spotify playlists  the song is included in", x = "Number of Spotify playlists \n the song is included in")
+
+# Remove outliers from in_spotify_playlists
+spotify<- subset( spotify,in_spotify_playlists < 4800)
+
+# Boxplot of in_spotify_playlists
+S5<-ggplot(spotify, aes(x = in_spotify_playlists)) +
+  geom_boxplot( fill = "tomato", color = "black") +
+  labs(title = "Figure 1.5: Transformed Boxplot of \n Number of  Spotify playlists \n the song is included in", x = "Number of Spotify playlists \n the song is included in")
+
+
+S6<-ggplot(spotify, aes(x = factor(mode), fill = factor(mode))) +
+  geom_bar() +
+  labs(title = "Figure 1.6: Distribution of Mode \n  of the song", x = "Mode", 
+       y = "Count") + scale_fill_manual(values = c("Major" = "green", "Minor" = "purple"))
+
+grid.arrange(S1,S2,S3,S4,S5,S6, ncol = 2)
+head(spotify$streams[order(-spotify$streams)], 5)
+
+```
+
+
+
+
+## Model building 
+
+```{r}
+# Fit a Poisson regression model
+spotify_poisson <- glm(spotify$streams ~ spotify$in_spotify_playlists + spotify$mode+ spotify$released_year +spotify$in_apple_playlists+spotify$energy, family = "poisson")
+
+# Display the summary of the model
+summary(spotify_poisson)
+```
+Model diagnostic
+
+```{r}
+
+pchisq(spotify_poisson$deviance, spotify_poisson$df.residual, lower.tail=F)
+```
+
+
+
+
+
+```{r}
+spotify_quasi_poisson<- glm(spotify$streams ~ spotify$in_spotify_playlists + spotify$mode+ spotify$released_year +spotify$in_apple_playlists+spotify$energy, family = "quasipoisson")
+summary(spotify_quasi_poisson)
+```
+
+
+```{r,fig.asp=1}
+SS1<-data.frame(x = spotify$in_spotify_playlists , residuals = qresid(spotify_quasi_poisson)) %>%
+  ggplot(aes(x = x, y = residuals)) +
+  geom_point() +
+  geom_smooth() +
+  theme_bw() +
+  labs(x = "Number of Spotify playlists \n the song is included in ", y = "Quantile residuals",title="Figure 1.7:Quantile residuals for \n Number of Spotify playlists \n the song is included in") 
+
+SS2<-data.frame(x = spotify$released_year, residuals = qresid(spotify_quasi_poisson)) %>%
+  ggplot(aes(x = x, y = residuals)) +
+  geom_point() +
+  geom_smooth() +
+  theme_bw() +
+  labs(x = "Released Year of Song ", y = "Quantile residuals",title="Figure 1.8:Quantile residuals \n for Released Year of Song")
+
+
+SS3<-data.frame(x = spotify$in_apple_playlists , residuals = qresid(spotify_quasi_poisson)) %>%
+  ggplot(aes(x = x, y = residuals)) +
+  geom_point() +
+  geom_smooth() +
+  theme_bw() +
+  labs(x = "Number of  Apple Music \n  playlists  the song is included in ", y = "Quantile residuals",title="Figure 1.9:Quantile residuals for \n Number of  Apple Music  \n playlists the song is included in") 
+
+SS4<-data.frame(x = spotify$energy, residuals = qresid(spotify_quasi_poisson)) %>%
+  ggplot(aes(x = x, y = residuals)) +
+  geom_point() +
+  geom_smooth() +
+  theme_bw() +
+  labs(x = "Number of  Perceived energy level \n of the song", y = "Quantile residuals",title="Figure 1.10:Quantile residuals for  \n Number of  Perceived energy level \n of the song") 
+
+
+
+# Arrange the ggplots in a 2x2 grid
+grid.arrange(SS1,SS2,SS3,SS4,  ncol = 2)
+```
+
+```{r,fig.asp=0.8}
+# Cook"s distance
+
+par(mfrow=c(2,2))
+# Cook"s distance
+plot(spotify$released_year, cooks.distance(spotify_quasi_poisson), pch = 16,main=" Figure 1.11: Cooks distance \n for Released year ", xlab = "Released year", ylab = " Cook's Distance")
+plot(spotify$in_spotify_playlists, cooks.distance(spotify_quasi_poisson), pch = 16,main=" Figure 1.12:Cooks distance \n for Number of Spotify playlists \n the song is included in ", xlab = "Number of Spotify playlists \n the song is included in", ylab = " Cook's Distance")
+plot(spotify$mode, cooks.distance(spotify_quasi_poisson), pch = 16,main="Figure 1.13: Cooks distance \n for Mode of song  ", xlab = "Mode of Song ", ylab = " Cook's Distance",xlim = c(0,1))
+
+
+plot(spotify$in_apple_playlists, cooks.distance(spotify_quasi_poisson), pch = 16,main=" Figure 1.14: Cooks distance \n for Apple Music  playlists \n the song is included in  ", xlab = "Number of Apple Music \n  playlists  the song is included in ", ylab = " Cook's Distance")
+```
+
+
+
+
+
+```{r}
+# Calculate VIF to check for multicollinearity
+vif(spotify_quasi_poisson)
+```
+
+## Supplementary
+
+```{r,fig.asp=0.5}
+# Boxplot of in_apple_playlists
+S7<-ggplot(spotify, aes(x = in_apple_playlists)) +
+  geom_boxplot( fill = "gold", color = "black") +
+  labs(title = "Figure 1.15: Boxplot of Number of Apple Music  playlists  the song is included in", x = "Number of Apple Music playlists the song is included in")
+
+
+# Boxplot of energy
+S8<-ggplot(spotify, aes(x = energy)) +
+  geom_boxplot( fill = "magenta", color = "black") +
+  labs(title = "Figure 1.16: Boxplot of Number of Perceived energy level of the song", x = "Perceived energy  level of the song")
+
+
+grid.arrange(S7,S8, ncol = 1)
+```
+
+```{r,fig.asp=0.5}
+plot(spotify$energy, cooks.distance(spotify_quasi_poisson), pch = 16,main=" Figure 1.18:Cooks distance for Number of \n Perceived energy level of the song  ", xlab = "Number of  Perceived energy level of the song ", ylab = " Cook's Distance")
+
+```
